@@ -1,0 +1,28 @@
+numpy<2.0
+opencv-python
+Pillow
+tqdm
+matplotlib
+scipy
+einops
+timm
+yacs
+loguru
+kornia
+h5py
+pytorch-lightning
+torchmetrics
+joblib
+hydra-core
+omegaconf
+iopath
+transformers
+addict
+yapf
+supervision>=0.22.0
+pycocotools
+mmcv==1.7.2
+mmsegmentation==0.30.0
+
+# Local GroundingDINO package used by semidense_matching.py.
+-e ./grounding_dino

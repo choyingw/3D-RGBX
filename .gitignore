@@ -1,0 +1,46 @@
+# Python caches
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+*.egg-info/
+
+# Build artifacts
+build/
+dist/
+*.so
+*.o
+*.egg
+
+# Logs and local config
+*.log
+.env
+.env.*
+
+# IDE/editor files
+.DS_Store
+.idea/
+.vscode/
+
+# Data, checkpoints, and generated outputs
+RGBT-Scenes/
+checkpoints/
+demo/pipelines/
+outputs/
+results/
+
+# Large model/data artifacts
+*.ckpt
+*.pth
+*.pt
+*.onnx
+*.npy
+*.npz
