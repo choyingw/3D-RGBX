@@ -33,6 +33,12 @@
 
 ## 🔧Environment
 
+Before running any script, update the local paths for your machine. The repository uses `/path/to/3D-RGBX` as a placeholder; replace it with the absolute path to this cloned repository, or export `RGBX_ROOT` before running the pipeline:
+
+```bash
+export RGBX_ROOT=/path/to/3D-RGBX
+```
+
 Create the basic Python environment from the repository root. Python 3.10 and a CUDA-capable GPU are recommended for the default pipeline.
 
 ```bash
@@ -44,6 +50,10 @@ pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
 
 pip install -U pip setuptools wheel
 pip install -r requirements.txt
+
+# Install 3D Gaussian Splatting CUDA extensions from the repository root.
+pip install -e ./dual-diff-gaussian-ray-splatter
+pip install -e ./simple-knn
 ```
 
 The densification scripts import NVIDIA Apex. If Apex is not already available in your environment, install it after PyTorch:
@@ -57,6 +67,7 @@ Prepare the pretrained weights under `checkpoints/` or override `CHECKPOINT_ROOT
 
 ```text
 checkpoints/
+  resnet34.pth
   densification_rgbt.pt
   minima_loftr.ckpt
   weights_xoftr_640.ckpt
@@ -125,6 +136,40 @@ demo/pipelines/<scene_name>/
   filtered/
   refined/
   refined_mean/
+```
+
+## 🎨3DGS Training and Rendering
+
+After `refined_mean/` is generated, the pipeline trains an RGBT 3D Gaussian Splatting model with:
+
+```text
+RGB supervision:     ./RGBT-Scenes/<scene_name>/rgb/train
+Thermal supervision: ./demo/pipelines/<scene_name>/refined_mean
+```
+
+`execute_pipeline_rgbt.sh` runs this 3DGS training and rendering stage automatically for the Building example:
+
+```bash
+bash execute_pipeline_rgbt.sh
+```
+
+The 3DGS outputs are saved inside the same scene pipeline folder:
+
+```text
+demo/pipelines/<scene_name>/
+  gs_model/              # trained 3DGS checkpoint and config
+  gs_rendered/
+    train/               # rendered train views
+    test/                # rendered test views
+```
+
+Training uses the `rgb/train` split only. Rendering saves train and test views separately when `rgb/test` images are available. For METU-VisTIR scenes, `render.py` automatically applies the width crop and 518 resize; RGBT-Scenes are rendered without that crop.
+
+If your RGBT-Scenes folder is outside this repository, override the dataset root:
+
+```bash
+SCENE_ROOT=/path/to/RGBT-Scenes/Building \
+  bash execute_pipeline_rgbt.sh
 ```
 
 ## 📚Citation

@@ -1,5 +1,17 @@
-from transformers import AutoTokenizer, BertModel, BertTokenizer, RobertaModel, RobertaTokenizerFast
+import logging
 import os
+import warnings
+
+from transformers import AutoTokenizer, BertModel, BertTokenizer, RobertaModel, RobertaTokenizerFast
+from transformers.utils import logging as transformers_logging
+
+
+transformers_logging.set_verbosity_error()
+logging.getLogger("transformers").setLevel(logging.ERROR)
+warnings.filterwarnings(
+    "ignore",
+    message=r"A parameter name that contains .* will be renamed internally to .*",
+)
 
 def get_tokenlizer(text_encoder_type):
     if not isinstance(text_encoder_type, str):

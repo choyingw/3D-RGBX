@@ -34,13 +34,30 @@ dist/
 RGBT-Scenes/
 checkpoints/
 demo/pipelines/
+output/
+gaussian-splatting-archive/tmp/
+gaussian-splatting-archive/3dgs_debug/
+gaussian-splatting-archive/output/
+gaussian-splatting-archive/outputs/
+gaussian-splatting-archive/results/
+gaussian-splatting-archive/eval/
+simple-knn/build/
+simple-knn/simple_knn.egg-info/
+dual-diff-gaussian-ray-splatter/build/
+dual-diff-gaussian-ray-splatter/*.egg-info/
 outputs/
 results/
+wandb/
+runs/
 
 # Large model/data artifacts
 *.ckpt
 *.pth
 *.pt
 *.onnx
+*.ply
+*.splat
+*.obj
+*.mtl
 *.npy
 *.npz

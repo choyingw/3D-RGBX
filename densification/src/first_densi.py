@@ -117,7 +117,7 @@ def test(args):
     save_path = f"{args.save_path}"
 
     os.makedirs(save_path, exist_ok=True)
-    for ori in ori_li:
+    for ori in tqdm(ori_li, desc="densification first"):
         fname = ori.split("/")[-1][:-4]
         try:
             rgb_ = Image.open(f"{rgb_folder}/{fname}.png")  # .resize((518, 294), Image.Resampling.LANCZOS)
@@ -223,14 +223,5 @@ def main(args):
 
 if __name__ == "__main__":
     args_main = check_args(args_config)
-
-    print("\n\n=== Arguments ===")
-    cnt = 0
-    for key in sorted(vars(args_main)):
-        print(key, ":", getattr(args_main, key), end="  |  ")
-        cnt += 1
-        if (cnt + 1) % 5 == 0:
-            print("")
-    print("\n")
 
     main(args_main)

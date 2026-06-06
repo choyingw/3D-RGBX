@@ -99,7 +99,7 @@ class SAM2ImagePredictor:
         self.reset_predictor()
         # Transform the image to the form expected by the model
         if isinstance(image, np.ndarray):
-            logging.info("For numpy array image, we assume (HxWxC) format")
+            logging.debug("For numpy array image, we assume (HxWxC) format")
             self._orig_hw = [image.shape[:2]]
         elif isinstance(image, Image):
             w, h = image.size
@@ -113,7 +113,7 @@ class SAM2ImagePredictor:
         assert (
             len(input_image.shape) == 4 and input_image.shape[1] == 3
         ), f"input_image must be of size 1x3xHxW, got {input_image.shape}"
-        logging.info("Computing image embeddings for the provided image...")
+        logging.debug("Computing image embeddings for the provided image...")
         backbone_out = self.model.forward_image(input_image)
         _, vision_feats, _, _ = self.model._prepare_backbone_features(backbone_out)
         # Add no_mem_embed, which is added to the lowest rest feat. map during training on videos
@@ -126,7 +126,7 @@ class SAM2ImagePredictor:
         ][::-1]
         self._features = {"image_embed": feats[-1], "high_res_feats": feats[:-1]}
         self._is_image_set = True
-        logging.info("Image embeddings computed.")
+        logging.debug("Image embeddings computed.")
 
     @torch.no_grad()
     def set_image_batch(
@@ -156,7 +156,7 @@ class SAM2ImagePredictor:
         assert (
             len(img_batch.shape) == 4 and img_batch.shape[1] == 3
         ), f"img_batch must be of size Bx3xHxW, got {img_batch.shape}"
-        logging.info("Computing image embeddings for the provided images...")
+        logging.debug("Computing image embeddings for the provided images...")
         backbone_out = self.model.forward_image(img_batch)
         _, vision_feats, _, _ = self.model._prepare_backbone_features(backbone_out)
         # Add no_mem_embed, which is added to the lowest rest feat. map during training on videos
@@ -170,7 +170,7 @@ class SAM2ImagePredictor:
         self._features = {"image_embed": feats[-1], "high_res_feats": feats[:-1]}
         self._is_image_set = True
         self._is_batch = True
-        logging.info("Image embeddings computed.")
+        logging.debug("Image embeddings computed.")
 
     def predict_batch(
         self,

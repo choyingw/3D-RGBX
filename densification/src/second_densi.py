@@ -114,20 +114,13 @@ def test(args):
 
     ori_li = sorted(glob.glob(f"{args.ori}/*.npy"))
     li = sorted(glob.glob(f"{args.filtered}/*.npy"))
-    print(ori_li)
     rgb_folder = f"{args.rgb}"
     save_path = f"{args.save_path}"
 
-    # ori_li = sorted(glob.glob("/home/choyingw/Documents/3d-rgbx/demo/cloudy1_518_fused_11/*.npy"))
-    # li = sorted(glob.glob("/home/choyingw/Documents/XoFTR/METU_VisTIR/cloudy/scene_1/debug/infared/*.npy"))
-    # rgb_folder = "/home/choyingw/Documents/XoFTR/METU_VisTIR/cloudy/scene_1/debug/rgb"
-    # save_path = "/home/choyingw/Documents/XoFTR/METU_VisTIR/cloudy/scene_1/debug/output"
     if not os.path.exists(save_path):
-        print("Creating save path:", save_path)
         os.makedirs(save_path, exist_ok=True)
     load_ori = True
-    for ori, fil in zip(ori_li, li):
-        print(ori, fil)
+    for ori, fil in tqdm(zip(ori_li, li), total=min(len(ori_li), len(li)), desc="densification second"):
         fname = fil.split("/")[-1][:-4]
         try:
             rgb_ = Image.open(f"{rgb_folder}/{fname}.png")  # .resize((518, 294), Image.Resampling.LANCZOS)
@@ -225,9 +218,7 @@ def test(args):
 
         depth_pred = output["pred"].squeeze().cpu().numpy()
         depth_pred = np.clip(depth_pred, 0, 255)
-        print("Name", f"{save_path}/{fname}.png")
         cv2.imwrite(f"{save_path}/{fname}.png", depth_pred.astype(np.uint8))
-        print("B", depth_pred.max(), depth_pred.min())
 
         cmap = "jet"
         cm = plt.get_cmap(cmap)
@@ -248,14 +239,5 @@ def main(args):
 
 if __name__ == "__main__":
     args_main = check_args(args_config)
-
-    print("\n\n=== Arguments ===")
-    cnt = 0
-    for key in sorted(vars(args_main)):
-        print(key, ":", getattr(args_main, key), end="  |  ")
-        cnt += 1
-        if (cnt + 1) % 5 == 0:
-            print("")
-    print("\n")
 
     main(args_main)

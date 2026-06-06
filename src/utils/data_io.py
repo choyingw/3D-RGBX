@@ -1,10 +1,12 @@
-import torch
-from torch import nn
-import numpy as np
+import time
+
 import cv2
+import numpy as np
+import torch
 
 # import torchvision.transforms as transforms
 import torch.nn.functional as F
+from torch import nn
 from yacs.config import CfgNode as CN
 
 
@@ -25,10 +27,12 @@ class DataIOWrapper(nn.Module):
     Pre-propcess data from different sources
     """
 
-    def __init__(self, model, config, ckpt=None):
+    def __init__(self, model, config, ckpt=None, device=None):
         super().__init__()
-
-        self.device = torch.device("cuda:{}".format(0) if torch.cuda.is_available() else "cpu")
+        if device is not None:
+            self.device = device
+        else:
+            self.device = torch.device("cuda:{}".format(0) if torch.cuda.is_available() else "cpu")
         torch.set_grad_enabled(False)
         self.model = model
         self.config = config
@@ -37,9 +41,10 @@ class DataIOWrapper(nn.Module):
         self.df = config["df"]
         self.padding = config["padding"]
         self.coarse_scale = config["coarse_scale"]
+        self.clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
 
         if ckpt:
-            ckpt_dict = torch.load(ckpt)
+            ckpt_dict = torch.load(ckpt, map_location=self.device, weights_only=False)
             self.model.load_state_dict(ckpt_dict["state_dict"])
             self.model = self.model.eval().to(self.device)
 
@@ -75,7 +80,7 @@ class DataIOWrapper(nn.Module):
             mask = None
         # img = transforms.functional.to_tensor(img).unsqueeze(0).to(device)
         if len(img.shape) == 2:  # grayscale image
-            img = torch.from_numpy(img)[None][None].cuda().float() / 255.0
+            img = torch.from_numpy(img)[None][None].to(self.device).float() / 255.0
         else:  # Color image
             img = torch.from_numpy(img).permute(2, 0, 1)[None].float() / 255.0
         return img, scale, mask, new_K, img_undistorted
@@ -87,15 +92,40 @@ class DataIOWrapper(nn.Module):
         img1_tensor, scale1, mask1, new_K1, img1_undistorted = self.preprocess_image(
             img1, self.device, resize=self.img1_size, df=self.df, padding=self.padding, cam_K=K1, dist=dist1
         )
-        mkpts0, mkpts1, mconf = self.match_images(img0_tensor, img1_tensor, mask0, mask1)
+        mkpts0, mkpts1, mconf, match_time = self.match_images(img0_tensor, img1_tensor, mask0, mask1)
         mkpts0 = mkpts0 * scale0
         mkpts1 = mkpts1 * scale1
         matches = np.concatenate([mkpts0, mkpts1], axis=1)
-        data = {"matches": matches, "mkpts0": mkpts0, "mkpts1": mkpts1, "mconf": mconf, "img0": img0, "img1": img1}
+        data = {
+            "matches": matches,
+            "mkpts0": mkpts0,
+            "mkpts1": mkpts1,
+            "mconf": mconf,
+            "img0": img0,
+            "img1": img1,
+            "match_time": match_time,
+        }
         if K0 is not None and dist0 is not None:
             data.update({"new_K0": new_K0, "img0_undistorted": img0_undistorted})
         if K1 is not None and dist1 is not None:
             data.update({"new_K1": new_K1, "img1_undistorted": img1_undistorted})
+        return data
+
+    def from_cv_imgs_filtering(self, img0, img1, K0=None, K1=None, dist0=None, dist1=None):
+        img0_tensor, scale0, mask0, new_K0, img0_undistorted = self.preprocess_image(
+            img0, self.device, resize=640, df=self.df, padding=self.padding, cam_K=K0, dist=dist0
+        )
+        img1_tensor, scale1, mask1, new_K1, img1_undistorted = self.preprocess_image(
+            img1, self.device, resize=640, df=self.df, padding=self.padding, cam_K=K1, dist=dist1
+        )
+        # img0_tensor, scale0, mask0, new_K0, img0_undistorted = self.preprocess_image(
+        #     img0, self.device, resize=self.img0_size, df=self.df, padding=self.padding, cam_K=K0, dist=dist0
+        # )
+        # img1_tensor, scale1, mask1, new_K1, img1_undistorted = self.preprocess_image(
+        #     img1, self.device, resize=self.img1_size, df=self.df, padding=self.padding, cam_K=K1, dist=dist1
+        # )
+        conf_mask, sim_matrix = self.match_images_filtering(img0_tensor, img1_tensor, mask0, mask1)
+        data = {"conf_mask": conf_mask, "sim_matrix": sim_matrix}
         return data
 
     def from_paths(self, img0_pth, img1_pth, K0=None, K1=None, dist0=None, dist1=None, read_color=False):
@@ -103,19 +133,60 @@ class DataIOWrapper(nn.Module):
         imread_flag = cv2.IMREAD_COLOR if read_color else cv2.IMREAD_GRAYSCALE
 
         img0 = cv2.imread(img0_pth, imread_flag)
+        img0 = cv2.copyMakeBorder(
+            img0,
+            top=16,
+            bottom=16,
+            left=16,
+            right=16,
+            borderType=cv2.BORDER_CONSTANT,
+            value=[0, 0, 0],  # black padding (0 for each channel)
+        )
+        # img0 = cv2.resize(img0[256:, :256], (518, 518))
         img1 = cv2.imread(img1_pth, imread_flag)
+        # img1 = cv2.resize(img1[256:, :256], (640, 480))
         return self.from_cv_imgs(img0, img1, K0=K0, K1=K1, dist0=dist0, dist1=dist1)
+
+    def from_paths_filtering(self, img0_pth, img1_pth, K0=None, K1=None, dist0=None, dist1=None, read_color=False):
+
+        imread_flag = cv2.IMREAD_COLOR if read_color else cv2.IMREAD_GRAYSCALE
+
+        img0 = cv2.imread(img0_pth, imread_flag)
+        img1 = cv2.imread(img1_pth, imread_flag)
+        return self.from_cv_imgs_filtering(img0, img1, K0=K0, K1=K1, dist0=dist0, dist1=dist1)
+
+    def from_tensor_filtering(self, img0, img1):
+        batch = {"image0": img0, "image1": img1}
+        self.model.filtering(batch)
+        sim_matrix = batch["sim_matrix"]
+        return sim_matrix
 
     def from_paths_eq0(self, img0_pth, img1_pth, K0=None, K1=None, dist0=None, dist1=None, read_color=False):
 
         imread_flag = cv2.IMREAD_COLOR if read_color else cv2.IMREAD_GRAYSCALE
 
-        img0 = cv2.imread(img0_pth, cv2.IMREAD_COLOR)
-        hsv_img0 = cv2.cvtColor(img0, cv2.COLOR_BGR2HSV)
-        hsv_img0[:, :, 2] = cv2.equalizeHist(hsv_img0[:, :, 2])
-        img0 = cv2.cvtColor(hsv_img0, cv2.COLOR_HSV2BGR)
+        img1 = cv2.imread(img1_pth, cv2.IMREAD_COLOR)
+        hsv_img1 = cv2.cvtColor(img1, cv2.COLOR_BGR2HSV)
+        hsv_img1[:, :, 2] = self.clahe.apply((hsv_img1[:, :, 2]))
+        img1 = cv2.cvtColor(hsv_img1, cv2.COLOR_HSV2BGR)
+        img1 = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
+        # img1 = cv2.resize(img1[256:, :256], (640, 480))
 
-        img1 = cv2.imread(img1_pth, imread_flag)
+        img0 = cv2.imread(img0_pth, cv2.IMREAD_COLOR)
+        img0 = cv2.copyMakeBorder(
+            img0,
+            top=16,
+            bottom=16,
+            left=16,
+            right=16,
+            borderType=cv2.BORDER_CONSTANT,
+            value=[0, 0, 0],  # black padding (0 for each channel)
+        )
+        hsv_img0 = cv2.cvtColor(img0, cv2.COLOR_BGR2HSV)
+        hsv_img0[:, :, 2] = self.clahe.apply((hsv_img0[:, :, 2]))
+        img0 = cv2.cvtColor(hsv_img0, cv2.COLOR_HSV2BGR)
+        img0 = cv2.cvtColor(img0, cv2.COLOR_BGR2GRAY)
+        # img0 = cv2.resize(img0[256:, :256], (518, 518))
 
         return self.from_cv_imgs(img0, img1, K0=K0, K1=K1, dist0=dist0, dist1=dist1)
 
@@ -130,12 +201,35 @@ class DataIOWrapper(nn.Module):
                     recompute_scale_factor=False,
                 )[0].bool()
             batch.update({"mask0": ts_mask_0.unsqueeze(0), "mask1": ts_mask_1.unsqueeze(0)})
+
+        torch.cuda.synchronize()
+        start = time.time()
         self.model(batch)
+        torch.cuda.synchronize()
+        match_1 = time.time()
+        match_time = match_1 - start
+        # print('match time:', match_1 - start)
         mkpts0 = batch["mkpts0_f"].cpu().numpy()
         mkpts1 = batch["mkpts1_f"].cpu().numpy()
-        mconf_key = "mconf_f" if "mconf_f" in batch else "mconf"
-        mconf = batch[mconf_key].cpu().numpy()
-        return mkpts0, mkpts1, mconf
+        mconf = batch["mconf_f"].cpu().numpy()
+        return mkpts0, mkpts1, mconf, match_time
+
+    def match_images_filtering(self, image0, image1, mask0, mask1):
+        batch = {"image0": image0, "image1": image1}
+        if mask0 is not None:  # img_padding is True
+            if self.coarse_scale:
+                [ts_mask_0, ts_mask_1] = F.interpolate(
+                    torch.stack([mask0, mask1], dim=0)[None].float(),
+                    scale_factor=self.coarse_scale,
+                    mode="nearest",
+                    recompute_scale_factor=False,
+                )[0].bool()
+            batch.update({"mask0": ts_mask_0.unsqueeze(0), "mask1": ts_mask_1.unsqueeze(0)})
+
+        self.model.filtering(batch)
+        conf_mask = batch["conf_mask"]
+        sim_matrix = batch["sim_matrix"]
+        return conf_mask, sim_matrix
 
     def pad_bottom_right(self, inp, pad_size, ret_mask=False):
         assert isinstance(pad_size, int) and pad_size >= max(inp.shape[-2:]), f"{pad_size} < {max(inp.shape[-2:])}"

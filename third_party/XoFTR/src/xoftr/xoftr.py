@@ -105,14 +105,6 @@ class XoFTR(nn.Module):
         data.update(
             {"bs": data["image0"].size(0), "hw0_i": data["image0"].shape[2:], "hw1_i": data["image1"].shape[2:]}
         )
-        # print(
-        #     "AdwwdwAA", data["image0"].shape[2:], data["image0"].max(), data["image0"].min(), data["image1"].shape[2:]
-        # )
-        # st0 = data["image0"].detach().cpu().numpy()[0, 0]
-        # cv2.imwrite("/home/choyingw/Documents/XoFTR/RGBT-Scenes/Building/tmp0.png", (st0 * 255.0).astype(np.uint8))
-        # st1 = data["image1"].detach().cpu().numpy()[0, 0]
-        # cv2.imwrite("/home/choyingw/Documents/XoFTR/RGBT-Scenes/Building/tmp1.png", (st1 * 255.0).astype(np.uint8))
-        # exit()
 
         eps = 1e-6
 
@@ -159,7 +151,6 @@ class XoFTR(nn.Module):
 
         # 3. match coarse-level
         sim_matrix = self.coarse_matching.forward_sim(feat_c0, feat_c1, data, mask_c0=mask_c0, mask_c1=mask_c1)
-        print("Sim matrix shape:", sim_matrix.shape)
 
         diag = sim_matrix[0, :, :].diagonal().cpu()  # .float()
 
@@ -219,12 +210,6 @@ class XoFTR(nn.Module):
         #     (rows[:, :, None].expand(-1, -1, 8).reshape(-1), cols[:, None, :].expand(-1, 8, -1).reshape(-1)),
         #     torch.zeros(rows.numel() * 8),
         # )
-
-        # print("DDW", canvas.shape)
-        canvas_draw = canvas.detach().cpu().numpy()  # [0, 0]
-        cv2.imwrite(
-            "/home/choyingw/Documents/XoFTR/RGBT-Scenes/Building/canvas.png", (canvas_draw * 255.0).astype(np.uint8)
-        )
 
         data.update({"conf_mask": canvas, "sim_matrix": sim_matrix})
 

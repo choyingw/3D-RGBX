@@ -13,7 +13,7 @@ from pathlib import Path
 
 model_path = {
     'resnet18': Path(__file__).parent / '../pretrained/resnet18.pth',
-    'resnet34': Path(__file__).parent / '../pretrained/resnet34.pth',
+    'resnet34': Path('checkpoints/resnet34.pth'),
 }
 
 
@@ -320,4 +320,3 @@ class PVT(PyramidVisionTransformer):
             backbone_pattern_condition_format=kwargs['backbone_pattern_condition_format'],
             num_pattern_types=kwargs['num_pattern_types']
         )
-

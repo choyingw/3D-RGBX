@@ -1,13 +1,21 @@
 import logging
 import os
+import sys
 import torch
 from copy import deepcopy
 
 
-def load_roma(args, test_orginal_megadepth=False):
-    import sys
+REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
+XOFTR_ROOT = os.path.join(REPO_ROOT, "third_party", "XoFTR")
 
-    sys.path.append("./third_party/RoMa_minima/")
+
+def prepend_sys_path(path):
+    if path not in sys.path:
+        sys.path.insert(0, path)
+
+
+def load_roma(args, test_orginal_megadepth=False):
+    prepend_sys_path(os.path.join(REPO_ROOT, "third_party", "RoMa_minima"))
     from third_party.RoMa_minima.romatch import roma_outdoor
     from third_party.RoMa_minima.romatch import tiny_roma_v1_outdoor
 
@@ -44,7 +52,7 @@ def load_loftr(args, test_orginal_megadepth=False):
         from src.config.default_for_megadepth_dense import get_cfg_defaults
     else:
         from src.config.default import get_cfg_defaults
-    from src.utils.data_io_loftr import DataIOWrapper, lower_config
+    from src.utils.data_io import DataIOWrapper, lower_config
 
     config = get_cfg_defaults(inference=True)
     config = lower_config(config)
@@ -59,7 +67,8 @@ def load_loftr(args, test_orginal_megadepth=False):
     # print('now using thr:', args.thr)
     matcher = LoFTR(config=_default_cfg)
     matcher.load_state_dict(torch.load(args.ckpt, weights_only=False)["state_dict"], strict=True)
-    matcher = matcher.eval()
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    matcher = matcher.eval().to(device)
 
     matcher = DataIOWrapper(matcher, config=config["test"])
     logging.info(config["test"])

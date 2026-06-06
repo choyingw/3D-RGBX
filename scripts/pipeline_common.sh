@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 RGBX_ROOT="${RGBX_ROOT:-/path/to/3D-RGBX}"
+RGBX_ROOT="${RGBX_ROOT%/}"
 DENSIFICATION_ROOT="${DENSIFICATION_ROOT:-$RGBX_ROOT/densification}"
 CHECKPOINT_ROOT="${CHECKPOINT_ROOT:-$RGBX_ROOT/checkpoints}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
@@ -66,8 +67,8 @@ run_densification_first() {
     local save_path="$3"
 
     (
-        cd "$DENSIFICATION_ROOT/src"
-        "$PYTHON_BIN" first_densi.py \
+        cd "$RGBX_ROOT"
+        "$PYTHON_BIN" densification/src/first_densi.py \
             --max_depth "$max_depth" --data_normalize_median 1 \
             --num_resolution "$resolution" \
             --multi_resolution_learnable_gradients_weights "$multi_resolution_learnable_gradients_weights" \
@@ -95,8 +96,8 @@ run_densification_second() {
     local sample_rate="$5"
 
     (
-        cd "$DENSIFICATION_ROOT/src"
-        "$PYTHON_BIN" second_densi.py \
+        cd "$RGBX_ROOT"
+        "$PYTHON_BIN" densification/src/second_densi.py \
             --max_depth "$max_depth" --data_normalize_median 1 \
             --num_resolution "$resolution" \
             --multi_resolution_learnable_gradients_weights "$multi_resolution_learnable_gradients_weights" \
