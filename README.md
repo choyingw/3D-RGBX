@@ -89,6 +89,24 @@ image_generation: baseline method of image generation from StyleBooth
 
 Put the dataset under the root folder ./RGBT-Scenes
 
+For METU-VisTIR, download the data <a href="https://drive.google.com/file/d/1LUkRAJ3PPoksH7FYLH7jh-CZUCqSBUSE/view?usp=sharing">here</a>, place the scenes under the repository root or override `SCENE_ROOT` when running. The METU pipeline expects each scene to contain COLMAP results, visible images, and thermal images:
+
+```text
+METU_VisTIR/
+  scene_1/
+    sparse/0/
+      cameras.bin
+      images.bin
+      points3D.bin
+    visible/
+      images_1920_1080/
+      images/
+    thermal/
+      images/
+```
+
+image_generation is also included
+
 ## 🚀Processing
 
 Edit `execute_pipeline_rgbt.sh` for the scene you want to process.
@@ -138,6 +156,63 @@ demo/pipelines/<scene_name>/
   refined_mean/
 ```
 
+For METU-VisTIR, use the separate METU pipeline script:
+
+```bash
+RGBX_ROOT=/path/to/3D-RGBX \
+scene_name=scene_1 \
+  bash execute_pipeline_metu_rgbt.sh
+```
+
+Before launching the full processing job, you can validate paths and checkpoints without running matching, densification, or 3DGS:
+
+```bash
+RGBX_ROOT=/path/to/3D-RGBX \
+scene_name=scene_1 \
+DRY_RUN=1 \
+  bash execute_pipeline_metu_rgbt.sh
+```
+
+By default, the METU script looks for:
+
+```text
+METU_VisTIR/<scene_name>/
+  sparse/0/
+  visible/images_1920_1080/ or visible/images/
+  thermal/images_1920_1080/, thermal/images/, infrared/images_1920_1080/, or infrared/images/
+```
+
+For the default layout, `<scene_name>` is directly under `METU_VisTIR/`, such as `METU_VisTIR/scene_1`. If your copy is nested by condition, set `METU_CONDITION` or override `SCENE_ROOT`.
+
+If your METU folders use different names, override the paths explicitly:
+
+```bash
+SCENE_ROOT=/path/to/METU_VisTIR/scene_1 \
+RGB_DIR=/path/to/METU_VisTIR/scene_1/visible/images_1920_1080 \
+TARGET_DIR=/path/to/METU_VisTIR/scene_1/thermal/images \
+  bash execute_pipeline_metu_rgbt.sh
+```
+
+To process another scene, only change `scene_name`:
+
+```bash
+RGBX_ROOT=/path/to/3D-RGBX \
+scene_name=scene_2 \
+  bash execute_pipeline_metu_rgbt.sh
+```
+
+METU outputs are written to:
+
+```text
+demo/pipelines/METU_VisTIR/<scene_name>/
+  matching/
+  dens/
+  mean/
+  filtered/
+  refined/
+  refined_mean/
+```
+
 ## 🎨3DGS Training and Rendering
 
 After `refined_mean/` is generated, the pipeline trains an RGBT 3D Gaussian Splatting model with:
@@ -164,6 +239,16 @@ demo/pipelines/<scene_name>/
 ```
 
 Training uses the `rgb/train` split only. Rendering saves train and test views separately when `rgb/test` images are available. For METU-VisTIR scenes, `render.py` automatically applies the width crop and 518 resize; RGBT-Scenes are rendered without that crop.
+
+For METU-VisTIR, the 3DGS model and renders are saved under the METU pipeline folder:
+
+```text
+demo/pipelines/METU_VisTIR/<scene_name>/
+  gs_model/
+  gs_rendered/
+    train/
+    test/
+```
 
 If your RGBT-Scenes folder is outside this repository, override the dataset root:
 
