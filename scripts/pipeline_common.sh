@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-RGBX_ROOT="${RGBX_ROOT:-/path/to/3D-RGBX}"
+RGBX_ROOT="${RGBX_ROOT:-/home/choyingw/Documents/3D-RGBX/}"
 RGBX_ROOT="${RGBX_ROOT%/}"
 DENSIFICATION_ROOT="${DENSIFICATION_ROOT:-$RGBX_ROOT/densification}"
 CHECKPOINT_ROOT="${CHECKPOINT_ROOT:-$RGBX_ROOT/checkpoints}"
@@ -47,6 +47,8 @@ run_rgbx_matching() {
     local fold1="$5"
     local fold2="$6"
     local save_dir="$7"
+    shift 7
+    local extra_args=("$@")
 
     mkdir -p "$(dirname "$save_dir")"
     (
@@ -57,7 +59,8 @@ run_rgbx_matching() {
             --save_dir "$save_dir" \
             --method "$method" \
             --ckpt "$(matcher_checkpoint "$method")" \
-            "$threshold_flag" "$threshold"
+            "$threshold_flag" "$threshold" \
+            "${extra_args[@]}"
     )
 }
 
@@ -65,6 +68,10 @@ run_densification_first() {
     local sparse_dir="$1"
     local rgb_dir="$2"
     local save_path="$3"
+    local densification_extra_args=()
+    if declare -p DENSIFICATION_EXTRA_ARGS >/dev/null 2>&1; then
+        densification_extra_args=("${DENSIFICATION_EXTRA_ARGS[@]}")
+    fi
 
     (
         cd "$RGBX_ROOT"
@@ -84,7 +91,8 @@ run_densification_first() {
             --pretrain "$ckpt" \
             --ori "$sparse_dir" \
             --rgb "$rgb_dir" \
-            --save_path "$save_path"
+            --save_path "$save_path" \
+            "${densification_extra_args[@]}"
     )
 }
 
@@ -94,6 +102,10 @@ run_densification_second() {
     local rgb_dir="$3"
     local save_path="$4"
     local sample_rate="$5"
+    local densification_extra_args=()
+    if declare -p DENSIFICATION_EXTRA_ARGS >/dev/null 2>&1; then
+        densification_extra_args=("${DENSIFICATION_EXTRA_ARGS[@]}")
+    fi
 
     (
         cd "$RGBX_ROOT"
@@ -115,7 +127,8 @@ run_densification_second() {
             --filtered "$filtered_dir" \
             --rgb "$rgb_dir" \
             --save_path "$save_path" \
-            --sample_rate "$sample_rate"
+            --sample_rate "$sample_rate" \
+            "${densification_extra_args[@]}"
     )
 }
 

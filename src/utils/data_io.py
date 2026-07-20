@@ -182,6 +182,8 @@ class DataIOWrapper(nn.Module):
             borderType=cv2.BORDER_CONSTANT,
             value=[0, 0, 0],  # black padding (0 for each channel)
         )
+        if img0.ndim == 2:
+            img0 = cv2.cvtColor(img0, cv2.COLOR_GRAY2BGR)
         hsv_img0 = cv2.cvtColor(img0, cv2.COLOR_BGR2HSV)
         hsv_img0[:, :, 2] = self.clahe.apply((hsv_img0[:, :, 2]))
         img0 = cv2.cvtColor(hsv_img0, cv2.COLOR_HSV2BGR)
@@ -211,7 +213,8 @@ class DataIOWrapper(nn.Module):
         # print('match time:', match_1 - start)
         mkpts0 = batch["mkpts0_f"].cpu().numpy()
         mkpts1 = batch["mkpts1_f"].cpu().numpy()
-        mconf = batch["mconf_f"].cpu().numpy()
+        mconf_key = "mconf_f" if "mconf_f" in batch else "mconf"
+        mconf = batch[mconf_key].cpu().numpy()
         return mkpts0, mkpts1, mconf, match_time
 
     def match_images_filtering(self, image0, image1, mask0, mask1):

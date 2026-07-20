@@ -140,12 +140,12 @@ def filter_matches(match_result, match_thr, width, height, pad):
     return mkpts0[valid] - pad, mkpts1[valid]
 
 
-def accumulate_neighborhood(canvas, canvas_count, mkpts0, mkpts1, source_gray):
+def accumulate_neighborhood(canvas, canvas_count, mkpts0, mkpts1, source_image):
     if len(mkpts0) == 0:
         return
 
-    height, width = canvas.shape
-    source_height, source_width = source_gray.shape
+    height, width = canvas.shape[:2]
+    source_height, source_width = source_image.shape[:2]
 
     idx0 = mkpts0.astype(np.int32)
     idx1 = mkpts1.astype(np.int32)
@@ -170,13 +170,16 @@ def accumulate_neighborhood(canvas, canvas_count, mkpts0, mkpts1, source_gray):
         xx0 = np.clip(x0 + dx, 0, width - 1)
         yy1 = np.clip(y1 + dy, 0, source_height - 1)
         xx1 = np.clip(x1 + dx, 0, source_width - 1)
-        canvas[yy0, xx0] += source_gray[yy1, xx1]
+        canvas[yy0, xx0] += source_image[yy1, xx1]
         canvas_count[yy0, xx0] += 1
 
 
-def accumulate_semantic_region(canvas, canvas_count, warped_gray, semantic_mask, rng, sample_rate):
+def accumulate_semantic_region(canvas, canvas_count, warped_image, semantic_mask, rng, sample_rate):
     """Randomly sample warped X-modality values inside the detected semantic mask."""
-    valid_region = warped_gray != 0
+    if warped_image.ndim == 3:
+        valid_region = np.any(warped_image != 0, axis=2)
+    else:
+        valid_region = warped_image != 0
     kernel = np.ones((3, 3), np.uint8)
     valid_region = cv2.erode(valid_region.astype(np.uint8), kernel, iterations=2).astype(bool)
 
@@ -193,7 +196,7 @@ def accumulate_semantic_region(canvas, canvas_count, warped_gray, semantic_mask,
     ys = pos_y[sample_idx]
     xs = pos_x[sample_idx]
 
-    canvas[ys, xs] += warped_gray[ys, xs]
+    canvas[ys, xs] += warped_image[ys, xs]
     canvas_count[ys, xs] += 1
 
 
@@ -224,7 +227,11 @@ def process_pair(
 ):
     image0_rgb = load_rgb(image0_path)
     height, width = image0_rgb.shape[:2]
-    canvas = np.zeros((height, width), dtype=np.float32)
+    use_color_target = args.processing_mode == "normal"
+    if use_color_target:
+        canvas = np.zeros((height, width, 3), dtype=np.float32)
+    else:
+        canvas = np.zeros((height, width), dtype=np.float32)
     canvas_count = np.zeros((height, width), dtype=np.float32)
     rng = np.random.default_rng(args.seed + pair_index)
 
@@ -233,31 +240,36 @@ def process_pair(
 
     for frame_idx, image1_path in enumerate(image1_paths):
         image1_rgb = load_rgb(image1_path)
-        image1_gray = cv2.cvtColor(image1_rgb, cv2.COLOR_RGB2GRAY)
+        if use_color_target:
+            source_image = image1_rgb
+            border_value = [0, 0, 0]
+        else:
+            source_image = cv2.cvtColor(image1_rgb, cv2.COLOR_RGB2GRAY)
+            border_value = 0
 
         match_result = matcher.from_paths(image0_path, image1_path)
         mkpts0, mkpts1 = filter_matches(match_result, args.match_thr, width, height, args.pad)
         homography, _ = estimate_homography(mkpts0, mkpts1)
 
         if frame_idx == central_frame:
-            warped_gray = cv2.warpPerspective(
-                image1_gray,
+            warped_image = cv2.warpPerspective(
+                source_image,
                 homography,
                 (width, height),
                 flags=cv2.INTER_NEAREST,
                 borderMode=cv2.BORDER_CONSTANT,
-                borderValue=0,
+                borderValue=border_value,
             )
             accumulate_semantic_region(
                 canvas,
                 canvas_count,
-                warped_gray,
+                warped_image,
                 semantic_mask,
                 rng,
                 args.region_sample_rate,
             )
 
-        accumulate_neighborhood(canvas, canvas_count, mkpts0, mkpts1, image1_gray)
+        accumulate_neighborhood(canvas, canvas_count, mkpts0, mkpts1, source_image)
 
         eq_match_result = matcher.from_paths_eq0(image0_path, image1_path)
         eq_mkpts0, eq_mkpts1 = filter_matches(
@@ -267,17 +279,23 @@ def process_pair(
             height,
             args.pad,
         )
-        accumulate_neighborhood(canvas, canvas_count, eq_mkpts0, eq_mkpts1, image1_gray)
+        accumulate_neighborhood(canvas, canvas_count, eq_mkpts0, eq_mkpts1, source_image)
 
     active_area = canvas_count >= 1
-    canvas[active_area] /= canvas_count[active_area]
+    if use_color_target:
+        canvas[active_area] /= canvas_count[active_area][:, None]
+    else:
+        canvas[active_area] /= canvas_count[active_area]
 
     stem = Path(image0_path).stem
     if args.verbose:
         tqdm.write(f"{stem}: {int(active_area.sum())} final points")
 
     np.save(save_dir / f"{stem}.npy", canvas)
-    cv2.imwrite(str(save_dir / f"{stem}.png"), canvas.astype(np.uint8))
+    if use_color_target:
+        cv2.imwrite(str(save_dir / f"{stem}.png"), canvas.astype(np.uint8)[:, :, [2, 1, 0]])
+    else:
+        cv2.imwrite(str(save_dir / f"{stem}.png"), canvas.astype(np.uint8))
 
     masked_rgb = image0_rgb.copy()
     masked_rgb[canvas_count == 0] = 0
@@ -377,6 +395,13 @@ def build_parser():
         type=int,
         default=42,
         help="Base random seed for semantic-region sampling.",
+    )
+    parser.add_argument(
+        "--processing_mode",
+        type=str,
+        choices=("thermal", "nir", "normal"),
+        default="thermal",
+        help="Pipeline mode. normal saves 3-channel maps; thermal and nir save 1-channel maps.",
     )
     parser.add_argument(
         "--text_prompt",

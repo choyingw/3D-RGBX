@@ -184,19 +184,15 @@ class SepConvGRU(nn.Module):
 
 
 class BasicDepthEncoder(nn.Module):
-    def __init__(self):
+    def __init__(self, depth_input_channels=1):
         super(BasicDepthEncoder, self).__init__()
-        # !!!HERE
-        self.convd1 = nn.Conv2d(1, 64, 7, padding=3)
-        # self.convd1 = nn.Conv2d(3, 64, 7, padding=3)
+        self.convd1 = nn.Conv2d(depth_input_channels, 64, 7, padding=3)
         self.convd2 = nn.Conv2d(64, 32, 3, padding=1)
 
         self.convg1 = nn.Conv2d(2, 64, 7, padding=3)
         self.convg2 = nn.Conv2d(64, 32, 3, padding=1)
 
-        # !!!HERE
-        self.conv = nn.Conv2d(64, 64 - (1 + 2), 3, padding=1)
-        # self.conv = nn.Conv2d(64, 64 - 5, 3, padding=1)
+        self.conv = nn.Conv2d(64, 64 - (depth_input_channels + 2), 3, padding=1)
 
     def forward(self, depth, depth_grad):
         dep = F.relu(self.convd1(depth))
@@ -213,7 +209,8 @@ class BasicUpdateBlock(nn.Module):
     def __init__(self, args, resolution=1, hidden_dim=64, input_dim=64, mask_r=8, conf_min=0.01):
         super(BasicUpdateBlock, self).__init__()
         self.args = args
-        self.encoder = BasicDepthEncoder()
+        depth_input_channels = 3 if "NORMAL" in args.train_data_name else 1
+        self.encoder = BasicDepthEncoder(depth_input_channels=depth_input_channels)
         self.gru = SepConvGRU(hidden_dim=hidden_dim, input_dim=64 + hidden_dim)
         self.depth_grad_head = DepthGradHead(resolution, input_dim=hidden_dim)
         self.resolution = resolution

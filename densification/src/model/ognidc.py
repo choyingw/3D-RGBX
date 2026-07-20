@@ -50,6 +50,7 @@ class OGNIDC(nn.Module):
             depth_input_channels = 3
         else:
             depth_input_channels = 1
+        self.depth_input_channels = depth_input_channels
 
         self.backbone = Backbone(args, mode=self.args.backbone_mode, depth_input_channels=depth_input_channels)
 
@@ -108,14 +109,31 @@ class OGNIDC(nn.Module):
         )
 
     def initialize_depth(self, sparse_depth):
-        log_depth_init = torch.zeros_like(sparse_depth)
-        log_depth_grad_init = torch.zeros_like(sparse_depth).repeat(1, 2 * self.resolution, 1, 1)  # B x 2 x H x W
+        batch_size, _, height, width = sparse_depth.shape
+        log_depth_init = torch.zeros(
+            batch_size,
+            1,
+            height,
+            width,
+            device=sparse_depth.device,
+            dtype=sparse_depth.dtype,
+        )
+        log_depth_grad_init = torch.zeros(
+            batch_size,
+            2 * self.resolution,
+            height,
+            width,
+            device=sparse_depth.device,
+            dtype=sparse_depth.dtype,
+        )
 
         return log_depth_init, log_depth_grad_init
 
     def forward(self, sample):
         rgb = sample["rgb"]
-        dep = torch.clone(sample["dep"])
+        dep_network_original = torch.clone(sample["dep"])
+        is_normal_input = self.depth_input_channels == 3
+        dep = dep_network_original.mean(dim=1, keepdim=True) if is_normal_input else torch.clone(dep_network_original)
         dep_original = torch.clone(dep)
         K = sample["K"]
         depth_pattern = sample["pattern"]
@@ -128,8 +146,12 @@ class OGNIDC(nn.Module):
         # if you multiply the sparse depth by a factor s, the network is guaranteed to produce a
         # dense depth also multiplied by the factor s.
 
-        valid_sparse_mask = (dep > 0.0).float()
-        valid_sparse_mask_network_input = torch.clone(valid_sparse_mask)
+        if is_normal_input:
+            valid_sparse_mask = (dep_network_original.abs().sum(dim=1, keepdim=True) > 0.0).float()
+            valid_sparse_mask_network_input = (dep_network_original != 0.0).float()
+        else:
+            valid_sparse_mask = (dep > 0.0).float()
+            valid_sparse_mask_network_input = torch.clone(valid_sparse_mask)
 
         K_downsampled = torch.clone(K)
         if self.downsample_rate > 1:
@@ -140,13 +162,13 @@ class OGNIDC(nn.Module):
         if self.args.whiten_sparse_depths:
             medians = torch.ones(B, device=rgb.device)
             for b in range(B):
-                nonzeros = dep_original[b] > 0.0
-                if len(nonzeros) > 0:
-                    medians[b] = torch.median(dep_original[b][nonzeros])
+                nonzeros = dep_network_original[b] > 0.0
+                if nonzeros.any():
+                    medians[b] = torch.median(dep_network_original[b][nonzeros])
 
-            dep_network_input = dep_original / medians.reshape(B, 1, 1, 1)  # make the median to be always 1.0
+            dep_network_input = dep_network_original / medians.reshape(B, 1, 1, 1)  # make the median to be always 1.0
         else:
-            dep_network_input = torch.clone(dep_original)
+            dep_network_input = torch.clone(dep_network_original)
 
         # sparse depth needs downsample before feeding into the optim layer
         if self.downsample_rate > 1:
@@ -207,6 +229,15 @@ class OGNIDC(nn.Module):
         else:
             dep_network_input = dep_network_input
 
+        if is_normal_input:
+            update_depth_input = F.interpolate(
+                dep_network_input,
+                size=dep_integrator.shape[-2:],
+                mode="nearest",
+            )
+        else:
+            update_depth_input = None
+
         # backbone
         assert self.args.pred_context_feature
         _, spn_guide, spn_confidence, context, confidence_input, confidence_output = self.backbone(
@@ -214,7 +245,7 @@ class OGNIDC(nn.Module):
         )
 
         if confidence_input is None:
-            confidence_input = torch.ones_like(dep)  # B x 1 x H x W
+            confidence_input = torch.ones_like(dep_integrator)  # B x 1 x H x W
 
         net, inp = torch.split(context, [self.hdim, self.cdim], dim=1)
         net = torch.tanh(net)
@@ -247,8 +278,9 @@ class OGNIDC(nn.Module):
                 log_depth_pred_median = torch.median(log_depth_pred.reshape(B, -1), dim=1)[0]
                 log_depth_pred_whitened = log_depth_pred - log_depth_pred_median.reshape(B, 1, 1, 1)
 
+            update_depth = update_depth_input if is_normal_input else log_depth_pred_whitened
             net, up_mask, delta_log_depth_grad, weights_depth_grad, weights_input = self.update_block(
-                net, inp, log_depth_pred_whitened, log_depth_grad_pred, K_downsampled
+                net, inp, update_depth, log_depth_grad_pred, K_downsampled
             )
             log_depth_grad_pred = log_depth_grad_pred + delta_log_depth_grad
 

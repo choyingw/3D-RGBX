@@ -30,7 +30,12 @@ def batched_matrix_to_trucated_flattened(batched_matrix, resolution):
     max_patch_size = 2 ** (resolution - 1)
 
     batch_size, C, H, W = batched_matrix.shape
-    assert C == 2 * resolution and H % max_patch_size == 0 and W % max_patch_size == 0
+    if C != 2 * resolution or H % max_patch_size != 0 or W % max_patch_size != 0:
+        raise AssertionError(
+            "Expected batched_matrix shape B x "
+            f"{2 * resolution} x H x W with H and W divisible by {max_patch_size}; "
+            f"got B x {C} x {H} x {W} for resolution={resolution}."
+        )
 
     truncated = []
 
@@ -287,6 +292,5 @@ def log_depth_gradient_to_normal(batched_K, batched_log_depth_gradients):
     normalized_normal_from_depth = normal_from_depth / torch.linalg.norm(normal_from_depth, ord=2, dim=1, keepdim=True)
 
     return normalized_normal_from_depth
-
 
 
